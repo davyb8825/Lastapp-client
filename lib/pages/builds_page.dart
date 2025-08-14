@@ -26,7 +26,7 @@ class _BuildsPageState extends State<BuildsPage> {
       _append('Scaffold result: $result');
       _lastJobId = result['job_id'] as String?;
       if (_lastJobId != null) {
-        _append('Status: $status');
+        _append('Status: ' + st.toString());
       }
     } finally {
       if (mounted) setState(() => _busy = false);
