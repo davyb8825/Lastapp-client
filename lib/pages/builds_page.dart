@@ -24,10 +24,16 @@ class _BuildsPageState extends State<BuildsPage> {
       _append('Scaffolding project "Demo Notes App"...');
       final result = await DemoApi.scaffold('Demo Notes App', template: 'starter');
       _append('Scaffold result: $result');
-      _lastJobId = result['job_id'] as String?;
-      if (_lastJobId != null) {
-        _append('Status: ' + st.toString());
+
+      // capture job id from backend response (if present) and fetch status
+      final jobId = (result['job_id'] ?? '') as String;
+      if (jobId.isNotEmpty) {
+        _lastJobId = jobId;
+        final statusMap = await DemoApi.status(jobId);
+        _append('Status: $statusMap');
       }
+    } catch (e) {
+      _append('Error: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -40,7 +46,9 @@ class _BuildsPageState extends State<BuildsPage> {
       _append('Triggering Android build...');
       final result = await DemoApi.buildAndroid('Demo Notes App');
       _append('Build result: $result');
-      _lastBuildId = result['build_id'] as String?;
+      _lastBuildId = (result['build_id'] ?? '') as String?;
+    } catch (e) {
+      _append('Error: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
