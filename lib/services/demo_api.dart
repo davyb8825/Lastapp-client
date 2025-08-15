@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class DemoApi {
+  static const String base = 'http://127.0.0.1:8000';
   static const String _base = 'http://127.0.0.1:8000';
 
   static Future<String> chat(String input) async {
