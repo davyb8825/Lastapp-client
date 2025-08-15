@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../services/demo_api.dart';
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({super.key});
@@ -9,7 +10,6 @@ class ProjectsPage extends StatefulWidget {
 }
 
 class _ProjectsPageState extends State<ProjectsPage> {
-  static const _base = 'http://127.0.0.1:8000';
   List<String> _projects = [];
   bool _loading = true;
 
@@ -22,11 +22,11 @@ class _ProjectsPageState extends State<ProjectsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final r = await http.get(Uri.parse('$_base/projects'));
+      final r = await http.get(Uri.parse('${DemoApi.base}/projects'));
       if (r.statusCode == 200) {
         final data = jsonDecode(r.body) as Map<String, dynamic>;
-        final list = (data['projects'] as List).cast<String>();
-        setState(() => _projects = list);
+        final list = (data['projects'] as List);
+        setState(() => _projects = list.map((e) => e.toString()).toList());
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -53,18 +53,23 @@ class _ProjectsPageState extends State<ProjectsPage> {
     );
     if (name == null || name.isEmpty) return;
     final r = await http.post(
-      Uri.parse('$_base/projects'),
+      Uri.parse('${DemoApi.base}/projects'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'name': name}),
     );
     if (r.statusCode == 200) _load();
   }
 
+  Future<void> _delete(String name) async {
+    final r = await http.delete(Uri.parse('${DemoApi.base}/projects/$name'));
+    if (r.statusCode == 200) {
+      setState(() => _projects.remove(name));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_loading) return const Center(child: CircularProgressIndicator());
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: _load,
@@ -74,11 +79,27 @@ class _ProjectsPageState extends State<ProjectsPage> {
           itemCount: _projects.length,
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, i) {
-            final p = _projects[i];
-            return ListTile(
-              leading: const Icon(Icons.folder),
-              title: Text(p),
-              subtitle: const Text('Details coming soon'),
+            final name = _projects[i];
+            return Dismissible(
+              key: ValueKey(name),
+              background: Container(
+                color: Colors.red,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: const Icon(Icons.delete, color: Colors.white),
+              ),
+              secondaryBackground: Container(
+                color: Colors.red,
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: const Icon(Icons.delete, color: Colors.white),
+              ),
+              onDismissed: (_) => _delete(name),
+              child: ListTile(
+                leading: const Icon(Icons.folder),
+                title: Text(name),
+                subtitle: const Text('Tap for details (coming soon)'),
+              ),
             );
           },
         ),
