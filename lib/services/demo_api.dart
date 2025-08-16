@@ -52,3 +52,21 @@ class DemoApi {
         : {'error': 'HTTP ${resp.statusCode}'};
   }
 }
+
+  static Future<Map<String, dynamic>> buildCloud() async {
+    final uri = Uri.parse('$base/build/cloud');
+    final r = await http.post(uri, headers: {'Content-Type': 'application/json'});
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> cloudStatus(String runId) async {
+    final uri = Uri.parse('$base/build/cloud/$runId');
+    final r = await http.get(uri);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> unzipArtifact(String artifactId) async {
+    final uri = Uri.parse('$base/artifacts/cloud/$artifactId/unzip');
+    final r = await http.post(uri);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
