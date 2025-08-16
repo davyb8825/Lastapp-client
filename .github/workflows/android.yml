@@ -33,9 +33,15 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Restore Android keystore from secret
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
-        run: |
-          mkdir -p android/app
+- name: Restore Android keystore from secret
+  run: |
+    if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+      echo "Keystore secret present: restoring file"
+      mkdir -p android/app
+      echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > android/app/lastapp.keystore
+    else
+      echo "No ANDROID_KEYSTORE_B64 secret set; skipping restore"
+    fi
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > android/app/lastapp.keystore
 
       - name: Flutter build release APK
