@@ -2,71 +2,60 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class DemoApi {
+  // Base URL for the local backend on your phone
   static const String base = 'http://127.0.0.1:8000';
-  static const String _base = 'http://127.0.0.1:8000';
 
-  static Future<String> chat(String input) async {
-    try {
-      final resp = await http.post(
-        Uri.parse('$_base/echo'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': input}),
-      );
-      if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        return (data['reply'] as String?) ?? 'No reply';
-      } else {
-        return 'Backend error: HTTP ${resp.statusCode}';
-      }
-    } catch (e) {
-      return 'Failed to reach backend: $e';
-    }
-  }
+  // ---- Existing/local endpoints ----
 
+  // POST /scaffold  {name or project_name, template}
   static Future<Map<String, dynamic>> scaffold(String name, {String template = 'starter'}) async {
-    final resp = await http.post(
-      Uri.parse('$_base/scaffold'),
+    final uri = Uri.parse('$base/scaffold');
+    final r = await http.post(
+      uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'project_name': name, 'template': template}),
+      body: jsonEncode({'name': name, 'template': template}),
     );
-    return (resp.statusCode == 200)
-        ? jsonDecode(resp.body) as Map<String, dynamic>
-        : {'error': 'HTTP ${resp.statusCode}'};
+    return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  // GET /status/{jobId}
   static Future<Map<String, dynamic>> status(String jobId) async {
-    final resp = await http.get(Uri.parse('$_base/status/$jobId'));
-    return (resp.statusCode == 200)
-        ? jsonDecode(resp.body) as Map<String, dynamic>
-        : {'error': 'HTTP ${resp.statusCode}'};
+    final uri = Uri.parse('$base/status/$jobId');
+    final r = await http.get(uri);
+    return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  // POST /build/android {project or projectName}
   static Future<Map<String, dynamic>> buildAndroid(String projectName) async {
-    final resp = await http.post(
-      Uri.parse('$_base/build/android'),
+    final uri = Uri.parse('$base/build/android');
+    final r = await http.post(
+      uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'project': projectName}),
+      body: jsonEncode({'projectName': projectName}),
     );
-    return (resp.statusCode == 200)
-        ? jsonDecode(resp.body) as Map<String, dynamic>
-        : {'error': 'HTTP ${resp.statusCode}'};
+    return jsonDecode(r.body) as Map<String, dynamic>;
   }
-}
 
+  // ---- Cloud build helpers (GitHub Actions) ----
+
+  // POST /build/cloud
   static Future<Map<String, dynamic>> buildCloud() async {
     final uri = Uri.parse('$base/build/cloud');
     final r = await http.post(uri, headers: {'Content-Type': 'application/json'});
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  // GET /build/cloud/{runId}
   static Future<Map<String, dynamic>> cloudStatus(String runId) async {
     final uri = Uri.parse('$base/build/cloud/$runId');
     final r = await http.get(uri);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  // POST /artifacts/cloud/{artifactId}/unzip
   static Future<Map<String, dynamic>> unzipArtifact(String artifactId) async {
     final uri = Uri.parse('$base/artifacts/cloud/$artifactId/unzip');
     final r = await http.post(uri);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
+}
