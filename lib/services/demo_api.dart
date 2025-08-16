@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class DemoApi {
-  // Base URL for the local backend on your phone
+  // Base URL for your local backend
   static const String base = 'http://127.0.0.1:8000';
 
-  // ---- Existing/local endpoints ----
+  // -------- Local endpoints --------
 
   // POST /scaffold  {name or project_name, template}
   static Future<Map<String, dynamic>> scaffold(String name, {String template = 'starter'}) async {
@@ -36,7 +36,7 @@ class DemoApi {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
-  // ---- Cloud build helpers (GitHub Actions) ----
+  // -------- Cloud build helpers (GitHub Actions) --------
 
   // POST /build/cloud
   static Future<Map<String, dynamic>> buildCloud() async {
@@ -58,10 +58,9 @@ class DemoApi {
     final r = await http.post(uri);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
-}
 
-  // ---- Simple chat/echo helper ----
-  // POST /echo  { "message": "<text>" }  ->  { "reply": "..." }
+  // -------- Simple chat/echo helper --------
+  // POST /echo { "message": "<text>" } -> { "reply": "..." }
   static Future<Map<String, dynamic>> chat(String text) async {
     final uri = Uri.parse('$base/echo');
     final r = await http.post(
@@ -71,3 +70,4 @@ class DemoApi {
     );
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
+}
