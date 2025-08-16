@@ -24,7 +24,8 @@ class _ChatPageState extends State<ChatPage> {
     });
     try {
       final reply = await DemoApi.chat(text);
-      setState(() => _messages.add(_Msg(role: 'assistant', text: reply)));
+        final replyStr = (reply["reply"] ?? reply.toString());
+setState(() => _messages.add(_Msg(role: 'assistant', text: replyStr)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
