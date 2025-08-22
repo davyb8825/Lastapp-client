@@ -12,6 +12,7 @@ class BuildsPage extends StatefulWidget {
 }
 
 class _BuildsPageState extends State<BuildsPage> {
+  String? _artifactId;
   bool _busy = false;
   bool _autoPolling = false;
   String _log = 'Ready.';
@@ -46,7 +47,10 @@ class _BuildsPageState extends State<BuildsPage> {
     try {
       _append('Triggering cloud build…');
       final res = await DemoApi.buildCloud();
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
       _runId = (res['run_id'] ?? '').toString();
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
       _status = res;
       _append('Dispatch: ${jsonEncode(res)}');
       await _autoPollUntilDone();
@@ -67,6 +71,8 @@ class _BuildsPageState extends State<BuildsPage> {
     try {
       _append('Polling status for runId=$_runId …');
       final res = await DemoApi.cloudStatus(_runId!);
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
       _status = res;
       _append('Status: ${jsonEncode(res)}');
     } catch (e) {
@@ -104,6 +110,8 @@ class _BuildsPageState extends State<BuildsPage> {
     try {
       _append('Unzipping artifact $artId …');
       final res = await DemoApi.unzipArtifact(artId);
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
+    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
       // merge into status under "unzipped"
       _status = Map<String, dynamic>.from(_status ?? {});
       _status!['unzipped'] = res;

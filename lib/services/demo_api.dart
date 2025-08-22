@@ -1,3 +1,4 @@
+import 'config.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -70,4 +71,28 @@ class DemoApi {
     );
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
+}
+
+// --- Cloud artifact helpers (added by sed) ---
+static Map<String, String> _jsonHeaders() {
+  final h = <String, String>{'Content-Type': 'application/json'};
+  if (Config.token != null) h['Authorization'] = 'Bearer ${Config.token!}';
+  return h;
+}
+
+static Future<Map<String, dynamic>> unzipArtifact(String artifactId) async {
+  final uri = Uri.parse('${Config.baseUrl}/artifacts/cloud/$artifactId/unzip');
+  final resp = await http.post(uri, headers: _jsonHeaders());
+  if (resp.statusCode >= 400) {
+    throw Exception('Unzip failed: ${resp.statusCode} ${resp.body}');
+  }
+  return jsonDecode(resp.body) as Map<String, dynamic>;
+}
+
+static Uri artifactApkUri(String artifactId) {
+  return Uri.parse('${Config.baseUrl}/artifacts/cloud/$artifactId/apk');
+}
+
+static Uri artifactApkUriWithFlavor(String artifactId, String flavor) {
+  return Uri.parse('${Config.baseUrl}/artifacts/cloud/$artifactId/apk/$flavor');
 }
