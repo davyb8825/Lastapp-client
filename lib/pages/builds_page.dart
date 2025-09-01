@@ -1,7 +1,7 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/demo_api.dart';
 
@@ -12,220 +12,229 @@ class BuildsPage extends StatefulWidget {
 }
 
 class _BuildsPageState extends State<BuildsPage> {
-  String? _artifactId;
   bool _busy = false;
-  bool _autoPolling = false;
-  String _log = 'Ready.';
+
   String? _runId;
-  Map<String, dynamic>? _status; // last cloud status payload
+  String? _status;      // in_progress | completed
+  String? _conclusion;  // success | failure | null
+  String? _artifactId;
+  String? _downloadUrl; // backend proxy to artifact zip
 
-  void _append(String line) {
-    setState(() => _log = _log.isEmpty ? line : '$_log\n$line');
+  Uri? _debugApk;
+  Uri? _releaseApk;
+
+  Timer? _poller;
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
   }
 
-  Future<void> _copyLog() async {
-    await Clipboard.setData(ClipboardData(text: _log));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Log copied to clipboard')),
-    );
-  }
-
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await canLaunchUrl(uri)) {
-      _append('Cannot open URL: $url');
-      return;
-    }
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok) _append('Failed to launch: $url');
-  }
-
-  Future<void> _triggerCloud() async {
+  Future<void> _startCloudBuild() async {
     if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      _append('Triggering cloud build…');
-      final res = await DemoApi.buildCloud();
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-      _runId = (res['run_id'] ?? '').toString();
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-      _status = res;
-      _append('Dispatch: ${jsonEncode(res)}');
-      await _autoPollUntilDone();
-    } catch (e) {
-      _append('Error: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+    setState(() {
+      _busy = true;
+      _runId = null;
+      _status = null;
+      _conclusion = null;
+      _artifactId = null;
+      _downloadUrl = null;
+      _debugApk = null;
+      _releaseApk = null;
+    });
 
-  Future<void> _poll() async {
-    if (_runId == null || _runId!.isEmpty) {
-      _append('No runId yet. Trigger a cloud build first.');
-      return;
-    }
-    if (_busy) return;
-    setState(() => _busy = true);
     try {
-      _append('Polling status for runId=$_runId …');
-      final res = await DemoApi.cloudStatus(_runId!);
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-      _status = res;
-      _append('Status: ${jsonEncode(res)}');
-    } catch (e) {
-      _append('Error: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
+      // Kick off CI
+      final res = await DemoApi.buildCloud(); // POST /build/cloud
+      final runId = (res['run_id'] ?? '').toString();
 
-  Future<void> _autoPollUntilDone() async {
-    if (_runId == null || _runId!.isEmpty) return;
-    _autoPolling = true;
-    try {
-      for (int i = 0; i < 120; i++) { // ~8 minutes max
-        await _poll();
-        if (!mounted) break;
-        final s = (_status?["status"] ?? "").toString();
-        if (s == "completed") break;
-        await Future.delayed(const Duration(seconds: 4));
-        if (!_autoPolling) break;
+      setState(() {
+        _runId = runId.isNotEmpty ? runId : null;
+        _status = res['status']?.toString();
+      });
+
+      if (_runId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not start cloud build')),
+        );
+        return;
       }
+
+      // Start polling
+      _poller?.cancel();
+      _poller = Timer.periodic(const Duration(seconds: 6), (_) => _pollOnce());
+      // Immediate poll for faster UI update
+      await _pollOnce();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to start cloud build: $e')),
+      );
     } finally {
-      _autoPolling = false;
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _unzip() async {
-    final artId = (_status?['artifact_id'] ?? '').toString();
-    if (artId.isEmpty) {
-      _append('No artifact_id yet. Wait for build to complete.');
-      return;
-    }
-    if (_busy) return;
-    setState(() => _busy = true);
+  Future<void> _pollOnce() async {
+    if (_runId == null) return;
     try {
-      _append('Unzipping artifact $artId …');
-      final res = await DemoApi.unzipArtifact(artId);
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-    if (res['artifact_id'] != null) setState(() => _artifactId = res['artifact_id'].toString());
-      // merge into status under "unzipped"
-      _status = Map<String, dynamic>.from(_status ?? {});
-      _status!['unzipped'] = res;
-      _append('Unzipped: ${jsonEncode(res)}');
+      final res = await DemoApi.cloudStatus(_runId!); // GET /build/cloud/{run_id}
+      final status = res['status']?.toString();
+      final conclusion = res['conclusion']?.toString();
+      final artifactId = res['artifact_id']?.toString();
+      final downloadUrl = res['download_url']?.toString();
+
+      setState(() {
+        _status = status;
+        _conclusion = conclusion;
+        if ((artifactId ?? '').isNotEmpty) _artifactId = artifactId;
+        if ((downloadUrl ?? '').isNotEmpty) _downloadUrl = downloadUrl;
+      });
+
+      if (status == 'completed') {
+        _poller?.cancel();
+        if (conclusion == 'success' && _artifactId != null) {
+          await _prepareApks(); // download zip + unzip + locate APKs
+        } else if (conclusion == 'failure' && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Build failed – check CI logs')),
+          );
+        }
+      }
+    } catch (_) {
+      // non-fatal; keep polling until completed
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _prepareApks() async {
+    if (_artifactId == null) return;
+
+    // 1) If backend gave a direct download_url proxy, hit it (backend writes zip to disk)
+    if ((_downloadUrl ?? '').isNotEmpty) {
+      try {
+        await http.get(Uri.parse(_downloadUrl!));
+      } catch (_) {/* ignore */}
+    }
+
+    // 2) Ask backend to unzip and return direct APK URLs
+    try {
+      final info = await DemoApi.unzipArtifact(_artifactId!); // POST /artifacts/cloud/{id}/unzip
+      final debugUrl = info['debug_apk_url'] as String?;
+      final releaseUrl = info['release_apk_url'] as String?;
+
+      setState(() {
+        _debugApk = (debugUrl != null && debugUrl.isNotEmpty) ? Uri.parse(debugUrl) : null;
+        _releaseApk = (releaseUrl != null && releaseUrl.isNotEmpty) ? Uri.parse(releaseUrl) : null;
+      });
+
+      if (_debugApk == null && _releaseApk == null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No APK found in artifact.')),
+        );
+      }
     } catch (e) {
-      _append('Error: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unzip failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _open(Uri url) async {
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open ${url.toString()}')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final artifactId = (_status?['artifact_id'] ?? '').toString();
-    final downloadZip = (_status?['download_url'] ?? '').toString();
-    final unzipInfo = _status?['unzipped'] as Map<String, dynamic>?;
+    final rows = <Widget>[
+      _kv('Run ID', _runId),
+      _kv('Status', _status),
+      _kv('Conclusion', _conclusion),
+      _kv('Artifact ID', _artifactId),
+    ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Builds'),
-        actions: [
-          IconButton(
-            tooltip: 'Copy log',
-            onPressed: _copyLog,
-            icon: const Icon(Icons.copy_all),
-          ),
-          IconButton(
-            tooltip: 'Clear log',
-            onPressed: () => setState(() => _log = ''),
-            icon: const Icon(Icons.clear),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _poll,
-        child: ListView(
-          padding: const EdgeInsets.all(12),
+      appBar: AppBar(title: const Text('Builds (Cloud)')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 12,
+              runSpacing: 12,
               children: [
-                ElevatedButton.icon(
-                  onPressed: _busy ? null : _triggerCloud,
-                  icon: const Icon(Icons.cloud),
-                  label: const Text('Build in Cloud'),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _startCloudBuild,
+                  icon: const Icon(Icons.cloud_upload),
+                  label: const Text('Start Cloud Build'),
                 ),
-                ElevatedButton.icon(
-                  onPressed: _busy ? null : _poll,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Poll Status'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () {
-                          _autoPolling = false;
-                          _append("Auto-poll stopped.");
-                        },
-                  icon: const Icon(Icons.stop),
-                  label: const Text("Stop Poll"),
-                ),
-                if (downloadZip.isNotEmpty)
-                  ElevatedButton.icon(
-                    onPressed: _busy ? null : () => _openUrl(downloadZip),
-                    icon: const Icon(Icons.archive),
-                    label: const Text('Download ZIP'),
+                if (_runId != null && _status != 'completed')
+                  OutlinedButton.icon(
+                    onPressed: _pollOnce,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Poll Now'),
                   ),
-                if (artifactId.isNotEmpty)
-                  ElevatedButton.icon(
-                    onPressed: _busy ? null : _unzip,
+                if (_artifactId != null)
+                  OutlinedButton.icon(
+                    onPressed: _prepareApks,
                     icon: const Icon(Icons.unarchive),
-                    label: const Text('Unzip'),
-                  ),
-                if ((unzipInfo?['apk_url'] ?? '').toString().isNotEmpty)
-                  ElevatedButton.icon(
-                    onPressed: _busy ? null : () => _openUrl(unzipInfo!['apk_url']),
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download APK'),
+                    label: const Text('Unzip Artifact'),
                   ),
               ],
             ),
             const SizedBox(height: 16),
-            const Text('Latest status', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(8),
+            ...rows,
+            const Divider(height: 32),
+
+            // APK download buttons
+            if (_debugApk != null || _releaseApk != null) ...[
+              const Text('APK Downloads', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  if (_debugApk != null)
+                    OutlinedButton.icon(
+                      onPressed: () => _open(_debugApk!),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download Debug APK'),
+                    ),
+                  if (_releaseApk != null)
+                    OutlinedButton.icon(
+                      onPressed: () => _open(_releaseApk!),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download Release APK'),
+                    ),
+                ],
               ),
-              child: SelectableText(
-                _status == null ? '—' : const JsonEncoder.withIndent('  ').convert(_status),
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('Log', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SelectableText(
-                _log.isEmpty ? '—' : _log,
-                style: const TextStyle(fontFamily: 'monospace'),
-              ),
-            ),
+              const SizedBox(height: 12),
+            ],
+
+            if (_status == 'in_progress') const LinearProgressIndicator(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _kv(String k, String? v) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(width: 110, child: Text('$k:', style: const TextStyle(fontWeight: FontWeight.w600))),
+          Expanded(child: Text(v ?? '—')),
+        ],
       ),
     );
   }
