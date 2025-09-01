@@ -44,3 +44,20 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .env
+# local artifacts
+apk/
+download/
+*.zip
+*.bak
+
+# gradle/flutter build junk
+**/build/
+.android/
+.ios/
+.gradle/
+.dart_tool/
+.flutter-plugins*
+
+# Local build outputs
+apk/
+download/
