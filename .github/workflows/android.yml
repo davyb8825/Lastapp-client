@@ -1,5 +1,7 @@
 name: Android Debug APK + PWA
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +14,13 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build debug APK (fast)
+      - name: Build debug APK
         run: flutter build apk --debug
 
       - name: Create tiny PWA bundle
@@ -48,7 +50,7 @@ jobs:
           cat > pwa/sw.js <<'JS'
           self.addEventListener('install', e => { self.skipWaiting(); });
           self.addEventListener('activate', e => { self.clients.claim(); });
-          self.addEventListener('fetch', e => { /* network-first minimal */ });
+          self.addEventListener('fetch', e => {});
           JS
 
           cat > pwa/index.html <<'HTML'
